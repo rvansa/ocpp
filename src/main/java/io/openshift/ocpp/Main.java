@@ -1,16 +1,20 @@
 package io.openshift.ocpp;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
-import com.googlecode.lanterna.gui2.AbstractComponent;
-import com.googlecode.lanterna.gui2.AbstractInteractableComponent;
 import com.googlecode.lanterna.gui2.ActionListBox;
 import com.googlecode.lanterna.gui2.BasicWindow;
 import com.googlecode.lanterna.gui2.BorderLayout;
@@ -34,9 +38,15 @@ import com.googlecode.lanterna.input.KeyType;
 import com.googlecode.lanterna.screen.TerminalScreen;
 import com.googlecode.lanterna.terminal.DefaultTerminalFactory;
 
+import io.fabric8.kubernetes.api.model.AuthInfoBuilder;
+import io.fabric8.kubernetes.api.model.Config;
+import io.fabric8.kubernetes.api.model.NamedAuthInfo;
 import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.client.KubernetesClientException;
+import io.fabric8.kubernetes.client.internal.KubeConfigUtils;
+import io.fabric8.kubernetes.client.internal.SerializationUtils;
 import io.fabric8.openshift.client.DefaultOpenShiftClient;
+import io.fabric8.openshift.client.internal.OpenShiftOAuthInterceptor;
 
 public class Main {
    private static final HashSet<Window.Hint> MODAL_CENTERED = new HashSet<>(Arrays.asList(Window.Hint.MODAL, Window.Hint.CENTERED));
@@ -265,12 +275,53 @@ public class Main {
          window.close();
          WaitingDialog waitingDialog = WaitingDialog.showDialog(ocpp.gui, "Please wait", "Logging in...");
          ocpp.executor.submit(() -> {
-            ocpp.oc = new DefaultOpenShiftClient(ocpp.oc.getConfiguration());
+            DefaultOpenShiftClient newClient = new DefaultOpenShiftClient(ocpp.oc.getConfiguration());
+            ocpp.oc = newClient;
             waitingDialog.close();
             fetchAndUpdate();
+            persistToken(newClient);
          });
       }), GridLayout.createHorizontallyFilledLayoutData(2));
       ocpp.gui.addWindow(window);
+      username.takeFocus();
+   }
+
+   private void persistToken(DefaultOpenShiftClient newClient) {
+      newClient.getHttpClient().interceptors().stream()
+            .filter(OpenShiftOAuthInterceptor.class::isInstance)
+            .findFirst().ifPresent(interceptor -> {
+         String token;
+         try {
+            Field oauthToken = OpenShiftOAuthInterceptor.class.getDeclaredField("oauthToken");
+            oauthToken.setAccessible(true);
+            AtomicReference<String> tokenReference = (AtomicReference<String>) oauthToken.get(interceptor);
+            token = tokenReference.get();
+            if (token == null) {
+               return;
+            }
+         } catch (NoSuchFieldException | IllegalAccessException e) {
+            return;
+         }
+         try {
+            Path kubeconfig = Paths.get(System.getProperty("user.home"), ".kube", "config");
+            Config config = KubeConfigUtils.parseConfig(kubeconfig.toFile());
+            String[] context = config.getCurrentContext().split("/");
+            String configUsername = context[2] + "/" + context[1];
+            Optional<NamedAuthInfo> nai = config.getUsers().stream().filter(u -> configUsername.equals(u.getName())).findFirst();
+            if (nai.isPresent()) {
+               nai.get().getUser().setToken(token);
+            } else {
+               config.getUsers().add(new NamedAuthInfo(configUsername, new AuthInfoBuilder().withToken(token).build()));
+            }
+            Path backup = kubeconfig.getParent().resolve("config.backup");
+            if (!backup.toFile().exists()) {
+               Files.copy(kubeconfig, backup);
+            }
+            Files.write(kubeconfig, SerializationUtils.getMapper().writeValueAsBytes(config));
+         } catch (IOException e) {
+            GuiUtil.showException(ocpp, e);
+         }
+      });
    }
 
    private void invokeSwitchNamespace() {
