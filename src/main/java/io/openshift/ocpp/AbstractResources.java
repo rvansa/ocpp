@@ -50,7 +50,7 @@ public abstract class AbstractResources implements Resources {
       } catch (InterruptedException e) {
          GuiUtil.showException(ocpp, e);
       }
-      ocpp.gui.getScreen().clear();
+      GuiUtil.refreshScreen(ocpp);
    }
 
    @Override

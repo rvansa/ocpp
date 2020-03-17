@@ -18,7 +18,6 @@ import io.fabric8.kubernetes.api.model.PodList;
 import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
 import io.fabric8.kubernetes.client.dsl.PodResource;
-import io.fabric8.openshift.client.OpenShiftClient;
 
 public class Pods extends AbstractResources {
    public static final Pods INSTANCE = new Pods();
@@ -31,12 +30,12 @@ public class Pods extends AbstractResources {
    }
 
    @Override
-   public List<String[]> fetchRows(OpenShiftClient oc) {
-      return oc.pods().inNamespace(oc.getConfiguration().getNamespace()).list().getItems().stream().map(pod -> new String[] {
+   public List<String[]> fetchRows(Ocpp ocpp) {
+      return ocpp.oc.pods().inNamespace(ocpp.ns()).list().getItems().stream().map(pod -> new String[] {
             pod.getMetadata().getName(),
-            pod.getStatus().getContainerStatuses().stream().filter(cs -> cs.getReady()).count() + "/" + pod.getStatus().getContainerStatuses().size(),
+            pod.getStatus().getContainerStatuses().stream().filter(ContainerStatus::getReady).count() + "/" + pod.getStatus().getContainerStatuses().size(),
             describeStatus(pod.getStatus()),
-            String.valueOf(pod.getStatus().getContainerStatuses().stream().mapToInt(cs -> cs.getRestartCount().intValue()).sum()),
+            String.valueOf(pod.getStatus().getContainerStatuses().stream().mapToInt(ContainerStatus::getRestartCount).sum()),
             Util.getAge(pod.getStatus().getStartTime()),
             pod.getStatus().getPodIP(),
             pod.getSpec().getNodeName()
@@ -67,7 +66,7 @@ public class Pods extends AbstractResources {
 //         } else if ("Running".equals(status.getPhase())) {
 //            return "TERMINATING";
          } else {
-            return status.getContainerStatuses().stream().map(cs -> cs.getState())
+            return status.getContainerStatuses().stream().map(ContainerStatus::getState)
                   .filter(s -> s.getTerminated() != null || s.getWaiting() != null)
                   .map(s -> s.getTerminated() != null ? s.getTerminated().getReason() : s.getWaiting().getReason())
                   .findFirst().orElse("NotReady");

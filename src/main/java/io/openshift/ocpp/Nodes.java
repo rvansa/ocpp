@@ -1,6 +1,5 @@
 package io.openshift.ocpp;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -13,7 +12,6 @@ import io.fabric8.kubernetes.api.model.NodeList;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
-import io.fabric8.openshift.client.OpenShiftClient;
 
 public class Nodes extends AbstractResources {
    public static final Nodes INSTANCE = new Nodes();
@@ -26,11 +24,11 @@ public class Nodes extends AbstractResources {
    }
 
    @Override
-   public List<String[]> fetchRows(OpenShiftClient oc) {
-      Map<String, List<Pod>> allPods = oc.pods().inAnyNamespace().list().getItems().stream()
+   public List<String[]> fetchRows(Ocpp ocpp) {
+      Map<String, List<Pod>> allPods = ocpp.oc.pods().inAnyNamespace().list().getItems().stream()
             .filter(pod -> pod.getSpec().getNodeName() != null)
             .collect(Collectors.groupingBy(pod -> pod.getSpec().getNodeName()));
-      return oc.nodes().list().getItems().stream().map(n -> new String[] {
+      return ocpp.oc.nodes().list().getItems().stream().map(n -> new String[] {
             n.getMetadata().getName(),
             n.getStatus().getConditions().stream()
                   .filter(nc -> "Ready".equals(nc.getType()))

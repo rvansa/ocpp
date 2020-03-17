@@ -3,12 +3,10 @@ package io.openshift.ocpp;
 import java.util.List;
 import java.util.Map;
 
-import io.fabric8.openshift.client.OpenShiftClient;
-
 public interface Resources {
    String[] getColumns();
 
-   List<String[]> fetchRows(OpenShiftClient oc);
+   List<String[]> fetchRows(Ocpp ocpp);
 
    Map<String, Operation> getOperations();
 

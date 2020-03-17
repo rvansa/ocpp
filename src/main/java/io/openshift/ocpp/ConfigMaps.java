@@ -1,6 +1,5 @@
 package io.openshift.ocpp;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -10,7 +9,6 @@ import io.fabric8.kubernetes.api.model.ConfigMapList;
 import io.fabric8.kubernetes.api.model.DoneableConfigMap;
 import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
-import io.fabric8.openshift.client.OpenShiftClient;
 
 public class ConfigMaps extends AbstractResources {
    public static final ConfigMaps INSTANCE = new ConfigMaps();
@@ -23,8 +21,8 @@ public class ConfigMaps extends AbstractResources {
    }
 
    @Override
-   public List<String[]> fetchRows(OpenShiftClient oc) {
-      return oc.configMaps().inNamespace(oc.getConfiguration().getNamespace()).list().getItems().stream().map(cm -> new String[] {
+   public List<String[]> fetchRows(Ocpp ocpp) {
+      return ocpp.oc.configMaps().inNamespace(ocpp.ns()).list().getItems().stream().map(cm -> new String[] {
          cm.getMetadata().getName(),
          describeData(cm.getData()),
          Util.getAge(cm.getMetadata().getCreationTimestamp())

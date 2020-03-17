@@ -11,7 +11,6 @@ import io.fabric8.kubernetes.api.model.ServiceList;
 import io.fabric8.kubernetes.api.model.ServicePort;
 import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
 import io.fabric8.kubernetes.client.dsl.ServiceResource;
-import io.fabric8.openshift.client.OpenShiftClient;
 
 public class Services extends AbstractResources {
    public static final Services INSTANCE = new Services();
@@ -24,8 +23,8 @@ public class Services extends AbstractResources {
    }
 
    @Override
-   public List<String[]> fetchRows(OpenShiftClient oc) {
-      return oc.services().inNamespace(oc.getConfiguration().getNamespace()).list().getItems().stream().map(svc -> new String[] {
+   public List<String[]> fetchRows(Ocpp ocpp) {
+      return ocpp.oc.services().inNamespace(ocpp.ns()).list().getItems().stream().map(svc -> new String[] {
             svc.getMetadata().getName(),
             svc.getSpec().getType(),
             svc.getSpec().getClusterIP(),

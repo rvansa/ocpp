@@ -1,7 +1,6 @@
 package io.openshift.ocpp;
 
 import java.math.BigInteger;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -14,7 +13,6 @@ import com.googlecode.lanterna.gui2.dialogs.WaitingDialog;
 
 import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
-import io.fabric8.openshift.client.OpenShiftClient;
 
 public class Deployments extends AbstractResources {
    public static final Deployments INSTANCE = new Deployments();
@@ -27,15 +25,15 @@ public class Deployments extends AbstractResources {
    }
 
    @Override
-   public List<String[]> fetchRows(OpenShiftClient oc) {
-      return Stream.concat(oc.apps().deployments().inNamespace(oc.getConfiguration().getNamespace()).list().getItems().stream().map(d -> new String[] {
+   public List<String[]> fetchRows(Ocpp ocpp) {
+      return Stream.concat(ocpp.oc.apps().deployments().inNamespace(ocpp.ns()).list().getItems().stream().map(d -> new String[] {
             d.getMetadata().getName(),
             "deployment",
             Util.toString(d.getStatus().getReadyReplicas()) + "/" + Util.toString(d.getStatus().getReplicas()),
             Util.toString(d.getStatus().getUpdatedReplicas()),
             Util.toString(d.getStatus().getAvailableReplicas()),
             Util.getAge(d.getMetadata().getCreationTimestamp())
-      }), oc.deploymentConfigs().inNamespace(oc.getConfiguration().getNamespace()).list().getItems().stream().map(dc -> new String[] {
+      }), ocpp.oc.deploymentConfigs().inNamespace(ocpp.ns()).list().getItems().stream().map(dc -> new String[] {
             dc.getMetadata().getName(),
             "dc",
             Util.toString(dc.getStatus().getReadyReplicas()) + "/" + Util.toString(dc.getStatus().getReplicas()),
@@ -55,6 +53,9 @@ public class Deployments extends AbstractResources {
       return commonOps().add("rescale", (ocpp, row) -> {
          String name = row.get(0);
          BigInteger newScale = TextInputDialog.showNumberDialog(ocpp.gui, "Rescale", "Set new #replicas for " + name, "");
+         if (newScale == null) {
+            return;
+         }
          switch (row.get(1)) {
             case "deployment":
                ocpp.oc.apps().deployments().inNamespace(ocpp.ns()).withName(name).scale(newScale.intValue());
@@ -65,7 +66,18 @@ public class Deployments extends AbstractResources {
             default:
                MessageDialog.showMessageDialog(ocpp.gui, "Cannot scale", "Cannot scale unknown deployment type: " + row.get(1), MessageDialogButton.OK);
          }
-      }).build();
+      }).add("show controller", ((ocpp, row) -> {
+         switch (row.get(1)) {
+            case "deployment":
+               ocpp.switchResources(new ReplicaSets(row.get(0)));
+               break;
+            case "dc":
+               ocpp.switchResources(new ReplicationControllers(row.get(0)));
+               break;
+            default:
+               MessageDialog.showMessageDialog(ocpp.gui, "Cannot scale", "Cannot scale unknown deployment type: " + row.get(1), MessageDialogButton.OK);
+         }
+      })).build();
    }
 
    @Override

@@ -16,14 +16,26 @@ public class Ocpp {
    final WindowBasedTextGUI gui;
    final Path deletions;
    OpenShiftClient oc;
+   private Resources resources = Pods.INSTANCE;
+   private final Runnable resourceSwitchCallback;
 
-   public Ocpp(WindowBasedTextGUI gui, OpenShiftClient oc) throws IOException {
+   public Ocpp(WindowBasedTextGUI gui, OpenShiftClient oc, Runnable resourceSwitchCallback) throws IOException {
       this.gui = gui;
       this.oc = oc;
+      this.resourceSwitchCallback = resourceSwitchCallback;
       this.deletions = Files.createTempDirectory("ocpp-deletions");
    }
 
    public String ns() {
       return oc.getConfiguration().getNamespace();
+   }
+
+   public Resources resources() {
+      return resources;
+   }
+
+   public void switchResources(Resources resources) {
+      this.resources = resources;
+      resourceSwitchCallback.run();
    }
 }

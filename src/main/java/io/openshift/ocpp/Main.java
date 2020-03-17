@@ -52,13 +52,9 @@ public class Main {
    private static final HashSet<Window.Hint> MODAL_CENTERED = new HashSet<>(Arrays.asList(Window.Hint.MODAL, Window.Hint.CENTERED));
 
    final Ocpp ocpp;
-
    final TerminalScreen screen;
-
    final Window mainWindow = new BasicWindow("oc++");
-
-   Resources resources = Pods.INSTANCE;
-   final Table<String> table = new Table<>(resources.getColumns());
+   final Table<String> table;
 
    public static void main(String[] args) throws IOException {
       new Main().run();
@@ -70,7 +66,8 @@ public class Main {
          factory.setForceTextTerminal(true);
       }
       screen = factory.createScreen();
-      ocpp = new Ocpp(new MultiWindowTextGUI(screen), new DefaultOpenShiftClient());
+      ocpp = new Ocpp(new MultiWindowTextGUI(screen), new DefaultOpenShiftClient(), this::onResourcesSwitch);
+      table = new Table<>(ocpp.resources().getColumns());
    }
 
    public void run() throws IOException {
@@ -81,11 +78,11 @@ public class Main {
       mainWindow.setComponent(mainPanel);
       Panel resourcePanel = new Panel(new LinearLayout(Direction.HORIZONTAL));
       mainPanel.addComponent(resourcePanel, BorderLayout.Location.TOP);
-      resourcePanel.addComponent(new Button("pods", () -> switchResource(Pods.INSTANCE)));
-      resourcePanel.addComponent(new Button("svcs", () -> switchResource(Services.INSTANCE)));
-      resourcePanel.addComponent(new Button("deployments", () -> switchResource(Deployments.INSTANCE)));
-      resourcePanel.addComponent(new Button("configmaps", () -> switchResource(ConfigMaps.INSTANCE)));
-      resourcePanel.addComponent(new Button("nodes", () -> switchResource(Nodes.INSTANCE)));
+      resourcePanel.addComponent(new Button("pods", () -> ocpp.switchResources(Pods.INSTANCE)));
+      resourcePanel.addComponent(new Button("svcs", () -> ocpp.switchResources(Services.INSTANCE)));
+      resourcePanel.addComponent(new Button("deployments", () -> ocpp.switchResources(Deployments.INSTANCE)));
+      resourcePanel.addComponent(new Button("configmaps", () -> ocpp.switchResources(ConfigMaps.INSTANCE)));
+      resourcePanel.addComponent(new Button("nodes", () -> ocpp.switchResources(Nodes.INSTANCE)));
 
       mainPanel.addComponent(table, BorderLayout.Location.CENTER);
       table.setSelectAction(this::selectOperation);
@@ -93,7 +90,7 @@ public class Main {
       Panel actionsPanel = new Panel(new LinearLayout(Direction.HORIZONTAL));
       mainPanel.addComponent(actionsPanel, BorderLayout.Location.BOTTOM);
       actionsPanel.addComponent(new Button("namespaces", this::invokeSwitchNamespace));
-      actionsPanel.addComponent(new Button("delete all", () -> resources.deleteAll(ocpp)));
+      actionsPanel.addComponent(new Button("delete all", () -> ocpp.resources().deleteAll(ocpp)));
       actionsPanel.addComponent(new Button("quit", mainWindow::close));
 
       mainWindow.addWindowListener(new WindowListenerAdapter() {
@@ -104,9 +101,9 @@ public class Main {
                   switch (keyStroke.getKeyType()) {
                      case Delete:
                         if (keyStroke.isShiftDown()) {
-                           resources.deleteAll(ocpp);
+                           ocpp.resources().deleteAll(ocpp);
                         } else {
-                           resources.delete(ocpp, getCurrentRow());
+                           ocpp.resources().delete(ocpp, getCurrentRow());
                         }
                         break;
                      default:
@@ -123,22 +120,22 @@ public class Main {
                      invokeSwitchNamespace();
                      break;
                   case 'y':
-                     resources.showYaml(ocpp, getCurrentRow());
+                     ocpp.resources().showYaml(ocpp, getCurrentRow());
                      break;
                   case 'e':
-                     resources.edit(ocpp, getCurrentRow());
+                     ocpp.resources().edit(ocpp, getCurrentRow());
                      break;
                   case 'p':
-                     switchResource(Pods.INSTANCE);
+                     ocpp.switchResources(Pods.INSTANCE);
                      break;
                   case 's':
-                     switchResource(Services.INSTANCE);
+                     ocpp.switchResources(Services.INSTANCE);
                      break;
                   case 'd':
-                     switchResource(Deployments.INSTANCE);
+                     ocpp.switchResources(Deployments.INSTANCE);
                      break;
                   case 'c':
-                     switchResource(ConfigMaps.INSTANCE);
+                     ocpp.switchResources(ConfigMaps.INSTANCE);
                      break;
                   default:
                      return;
@@ -175,7 +172,7 @@ public class Main {
          GuiUtil.refreshScreen(ocpp);
          r.run();
       };
-      Map<String, Resources.Operation> operations = resources.getOperations();
+      Map<String, Resources.Operation> operations = ocpp.resources().getOperations();
       if (operations.isEmpty()) {
          return;
       }
@@ -213,13 +210,12 @@ public class Main {
       return row;
    }
 
-   private void switchResource(Resources resources) {
-      this.resources = resources;
+   private void onResourcesSwitch() {
       table.getTableModel().clear();
       for (int i = table.getTableModel().getColumnCount() - 1; i >= 0; --i) {
          table.getTableModel().removeColumn(i);
       }
-      for (String column : resources.getColumns()) {
+      for (String column : ocpp.resources().getColumns()) {
          table.getTableModel().addColumn(column, new String[0]);
       }
       table.setSelectedRow(0);
@@ -231,10 +227,10 @@ public class Main {
          return;
       }
       try {
-         Resources resources = this.resources;
-         List<String[]> rows = resources.fetchRows(ocpp.oc);
+         Resources resources = ocpp.resources();
+         List<String[]> rows = resources.fetchRows(ocpp);
          ocpp.gui.getGUIThread().invokeLater(() -> {
-            if (this.resources != resources) {
+            if (ocpp.resources() != resources) {
                // Do not update the table when the resources have switched
                return;
             }
