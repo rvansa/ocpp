@@ -1,6 +1,8 @@
 package io.openshift.ocpp;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import com.googlecode.lanterna.gui2.dialogs.MessageDialog;
@@ -9,6 +11,7 @@ import com.googlecode.lanterna.gui2.dialogs.WaitingDialog;
 
 import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
+import io.fabric8.kubernetes.client.internal.SerializationUtils;
 
 public abstract class AbstractResources implements Resources {
    final Operation DESCRIBE = this::describe;
@@ -61,7 +64,11 @@ public abstract class AbstractResources implements Resources {
          WaitingDialog waitingDialog = WaitingDialog.showDialog(ocpp.gui, "Please wait", "Deleting " + resource + "...");
          ocpp.executor.submit(() -> {
             try {
-               getResources(ocpp, row).withName(resourceName).delete();
+               Resource<?, ?> r = getResources(ocpp, row).withName(resourceName);
+               String prefix = getResourceType(row) + "-" + resourceName + "-";
+               Path deletedBackup = Files.createTempFile(ocpp.deletions, prefix, ".yaml");
+               Files.write(deletedBackup, SerializationUtils.getMapper().writeValueAsBytes(r.get()));
+               r.delete();
             } catch (Exception e) {
                GuiUtil.showException(ocpp, e);
             } finally {
