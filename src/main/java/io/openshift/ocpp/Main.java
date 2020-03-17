@@ -172,7 +172,7 @@ public class Main {
          GuiUtil.refreshScreen(ocpp);
          r.run();
       };
-      Map<String, Resources.Operation> operations = ocpp.resources().getOperations();
+      Map<String, Resources.Operation> operations = ocpp.resources().getOperations(row);
       if (operations.isEmpty()) {
          return;
       }

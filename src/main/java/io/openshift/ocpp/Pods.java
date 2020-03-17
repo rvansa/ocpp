@@ -85,7 +85,7 @@ public class Pods extends AbstractResources {
    }
 
    @Override
-   public Map<String, Operation> getOperations() {
+   public Map<String, Operation> getOperations(List<String> row) {
       // intentionally omitting EDIT
       return Resources.ops().add("describe", DESCRIBE).add("yaml", SHOW_YAML).add("delete", DELETE)
             .add("logs", Pods::logs).add("rsh", Pods::rsh).add("top", Pods::top).build();

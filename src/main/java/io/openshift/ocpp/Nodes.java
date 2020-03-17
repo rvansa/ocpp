@@ -5,11 +5,13 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.DoneableNode;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.NodeAddress;
 import io.fabric8.kubernetes.api.model.NodeList;
 import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 
@@ -43,10 +45,10 @@ public class Nodes extends AbstractResources {
             (allPods.containsKey(n.getMetadata().getName()) ? allPods.get(n.getMetadata().getName()).size() : 0) + "/" + n.getStatus().getCapacity().get("pods").getAmount(),
             (allPods.containsKey(n.getMetadata().getName()) ? allPods.get(n.getMetadata().getName()).stream()
                   .flatMap(pod -> pod.getSpec().getContainers().stream())
-                  .map(c -> c.getResources()).filter(Objects::nonNull)
-                  .map(res -> res.getRequests()).filter(Objects::nonNull)
+                  .map(Container::getResources).filter(Objects::nonNull)
+                  .map(ResourceRequirements::getRequests).filter(Objects::nonNull)
                   .map(reqs -> reqs.get("cpu")).filter(Objects::nonNull)
-                  .mapToInt(q -> Util.millicores(q)).sum() : 0) + "m/" + n.getStatus().getCapacity().get("cpu").getAmount()
+                  .mapToInt(Util::millicores).sum() : 0) + "m/" + n.getStatus().getCapacity().get("cpu").getAmount()
       }).collect(Collectors.toList());
    }
 
@@ -56,7 +58,7 @@ public class Nodes extends AbstractResources {
    }
 
    @Override
-   public Map<String, Operation> getOperations() {
+   public Map<String, Operation> getOperations(List<String> unused) {
       return commonOps().add("ssh", (ocpp, row) -> {
          String name = row.get(0);
          Node node = ocpp.oc.nodes().withName(name).get();

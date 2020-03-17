@@ -8,8 +8,7 @@ public interface Resources {
 
    List<String[]> fetchRows(Ocpp ocpp);
 
-   Map<String, Operation> getOperations();
-
+   Map<String, Operation> getOperations(List<String> row);
 
    void describe(Ocpp ocpp, List<String> row);
 

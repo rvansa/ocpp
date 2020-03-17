@@ -1,6 +1,7 @@
 package io.openshift.ocpp;
 
 import java.math.BigInteger;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -49,35 +50,38 @@ public class Deployments extends AbstractResources {
    }
 
    @Override
-   public Map<String, Operation> getOperations() {
-      return commonOps().add("rescale", (ocpp, row) -> {
-         String name = row.get(0);
-         BigInteger newScale = TextInputDialog.showNumberDialog(ocpp.gui, "Rescale", "Set new #replicas for " + name, "");
-         if (newScale == null) {
-            return;
-         }
-         switch (row.get(1)) {
-            case "deployment":
-               ocpp.oc.apps().deployments().inNamespace(ocpp.ns()).withName(name).scale(newScale.intValue());
-               break;
-            case "dc":
-               ocpp.oc.deploymentConfigs().inNamespace(ocpp.ns()).withName(name).scale(newScale.intValue());
-               break;
-            default:
-               MessageDialog.showMessageDialog(ocpp.gui, "Cannot scale", "Cannot scale unknown deployment type: " + row.get(1), MessageDialogButton.OK);
-         }
-      }).add("show controller", ((ocpp, row) -> {
-         switch (row.get(1)) {
-            case "deployment":
-               ocpp.switchResources(new ReplicaSets(row.get(0)));
-               break;
-            case "dc":
-               ocpp.switchResources(new ReplicationControllers(row.get(0)));
-               break;
-            default:
-               MessageDialog.showMessageDialog(ocpp.gui, "Cannot scale", "Cannot scale unknown deployment type: " + row.get(1), MessageDialogButton.OK);
-         }
-      })).build();
+   public Map<String, Operation> getOperations(List<String> row) {
+      switch (row.get(1)) {
+         case "deployment":
+            return commonOps()
+                  .add("rescale", this::rescaleDeployment)
+                  .add("show replicasets", (ocpp, row2) -> ocpp.switchResources(new ReplicaSets(row2.get(0))))
+                  .build();
+         case "dc":
+            return commonOps()
+                  .add("rescale", this::rescaleDeploymentConfig)
+                  .add("show repl.controllers", (ocpp, row2) -> ocpp.switchResources(new ReplicationControllers(row2.get(0))))
+                  .add("rollout latest", (ocpp, row2) -> ocpp.oc.deploymentConfigs().inNamespace(ocpp.ns()).withName(row2.get(0)).deployLatest())
+                  .build();
+         default:
+            return Collections.emptyMap();
+      }
+   }
+
+   private void rescaleDeployment(Ocpp ocpp, List<String> row) {
+      String name = row.get(0);
+      BigInteger newScale = TextInputDialog.showNumberDialog(ocpp.gui, "Rescale", "Set new #replicas for " + name, "");
+      if (newScale != null) {
+         ocpp.oc.apps().deployments().inNamespace(ocpp.ns()).withName(name).scale(newScale.intValue());
+      }
+   }
+
+   private void rescaleDeploymentConfig(Ocpp ocpp, List<String> row) {
+      String name = row.get(0);
+      BigInteger newScale = TextInputDialog.showNumberDialog(ocpp.gui, "Rescale", "Set new #replicas for " + name, "");
+      if (newScale != null) {
+         ocpp.oc.deploymentConfigs().inNamespace(ocpp.ns()).withName(name).scale(newScale.intValue());
+      }
    }
 
    @Override

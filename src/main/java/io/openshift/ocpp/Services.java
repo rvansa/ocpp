@@ -59,7 +59,7 @@ public class Services extends AbstractResources {
    }
 
    @Override
-   public Map<String, Operation> getOperations() {
+   public Map<String, Operation> getOperations(List<String> row) {
       return commonOps().build();
    }
 

@@ -48,7 +48,7 @@ public class ReplicaSets extends AbstractResources {
    }
 
    @Override
-   public Map<String, Operation> getOperations() {
+   public Map<String, Operation> getOperations(List<String> row) {
       return Resources.ops().add("describe", DESCRIBE).add("yaml", SHOW_YAML).add("delete", DELETE).build();
    }
 }
