@@ -20,7 +20,7 @@ public class ReplicaSets extends AbstractResources {
    }
 
    @Override
-   String getResourceType(List<String> row) {
+   public String getResourceType(List<String> row) {
       return "replicaset";
    }
 

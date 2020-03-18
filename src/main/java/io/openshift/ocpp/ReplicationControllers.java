@@ -20,7 +20,7 @@ public class ReplicationControllers extends AbstractResources {
    }
 
    @Override
-   String getResourceType(List<String> row) {
+   public String getResourceType(List<String> row) {
       return "replicationcontroller";
    }
 

@@ -20,6 +20,8 @@ public interface Resources {
 
    void deleteAll(Ocpp ocpp);
 
+   String getResourceType(List<String> row);
+
    interface Operation {
       void command(Ocpp ocpp, List<String> row);
    }

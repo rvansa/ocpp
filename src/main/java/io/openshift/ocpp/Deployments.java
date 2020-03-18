@@ -46,7 +46,7 @@ public class Deployments extends AbstractResources {
 
    @Override
    public String getResourceType(List<String> row) {
-      return row.get(1);
+      return row == null ? "deployments" : row.get(1);
    }
 
    @Override

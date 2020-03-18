@@ -98,8 +98,6 @@ public abstract class AbstractResources implements Resources {
             MessageDialogButton.Yes, MessageDialogButton.No) == MessageDialogButton.Yes;
    }
 
-   abstract String getResourceType(List<String> row);
-
    protected MapBuilder<String, Operation> commonOps() {
       return Resources.ops().add("describe", DESCRIBE).add("edit", EDIT).add("yaml", SHOW_YAML).add("delete", DELETE);
    }

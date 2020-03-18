@@ -10,14 +10,19 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
+import javax.net.ssl.SSLException;
+
+import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.gui2.BasicWindow;
 import com.googlecode.lanterna.gui2.BorderLayout;
 import com.googlecode.lanterna.gui2.Button;
+import com.googlecode.lanterna.gui2.Component;
 import com.googlecode.lanterna.gui2.Direction;
 import com.googlecode.lanterna.gui2.GridLayout;
 import com.googlecode.lanterna.gui2.Label;
@@ -29,15 +34,20 @@ import com.googlecode.lanterna.gui2.Window;
 import com.googlecode.lanterna.gui2.WindowListenerAdapter;
 import com.googlecode.lanterna.gui2.dialogs.ActionListDialog;
 import com.googlecode.lanterna.gui2.dialogs.ActionListDialogBuilder;
+import com.googlecode.lanterna.gui2.dialogs.MessageDialog;
+import com.googlecode.lanterna.gui2.dialogs.MessageDialogButton;
 import com.googlecode.lanterna.gui2.dialogs.WaitingDialog;
 import com.googlecode.lanterna.gui2.table.Table;
 import com.googlecode.lanterna.input.KeyStroke;
+import com.googlecode.lanterna.input.KeyType;
 import com.googlecode.lanterna.screen.TerminalScreen;
 import com.googlecode.lanterna.terminal.DefaultTerminalFactory;
 
 import io.fabric8.kubernetes.api.model.AuthInfoBuilder;
 import io.fabric8.kubernetes.api.model.Config;
 import io.fabric8.kubernetes.api.model.NamedAuthInfo;
+import io.fabric8.kubernetes.api.model.NamedCluster;
+import io.fabric8.kubernetes.api.model.NamedClusterBuilder;
 import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.internal.KubeConfigUtils;
@@ -92,6 +102,11 @@ public class Main {
 
       mainWindow.addWindowListener(new WindowListenerAdapter() {
          @Override
+         public void onResized(Window window, TerminalSize oldSize, TerminalSize newSize) {
+            table.setVisibleRows(newSize.getRows() - 3);
+         }
+
+         @Override
          public void onUnhandledInput(Window basePane, KeyStroke keyStroke, AtomicBoolean hasBeenHandled) {
             try {
                if (keyStroke.getCharacter() == null) {
@@ -144,6 +159,9 @@ public class Main {
          }
       });
 
+      if (ocpp.oc.getConfiguration().getNamespace() == null) {
+         ocpp.oc.getConfiguration().setNamespace("default");
+      }
       ocpp.executor.scheduleWithFixedDelay(this::fetchAndUpdate, 0, 1, TimeUnit.SECONDS);
 
       ocpp.gui.waitForWindowToClose(mainWindow);
@@ -210,13 +228,28 @@ public class Main {
                // Do not update the table when the resources have switched
                return;
             }
+            Panel mainPanel = (Panel) mainWindow.getComponent();
+            if (rows.size() == 0) {
+               if (mainPanel.removeComponent(table)) {
+                  Label label = new Label("No " + resources.getResourceType(null) + " in namespace " + ocpp.ns());
+                  mainPanel.addComponent(label, BorderLayout.Location.CENTER);
+               }
+            } else {
+               Component label = mainPanel.getChildren().stream().filter(Label.class::isInstance).findFirst().orElse(null);
+               if (label != null) {
+                  mainPanel.removeComponent(label);
+                  mainPanel.addComponent(table, BorderLayout.Location.CENTER);
+               }
+            }
             table.getTableModel().clear();
             for (String[] row : rows) {
                table.getTableModel().addRow(row);
             }
          });
       } catch (KubernetesClientException kce) {
-         if (kce.getCode() == 401) {
+         if (kce.getCause() instanceof SSLException) {
+            askForInsecureConnection();
+         } else if (requiresLogin(kce)) {
             login();
          } else {
             GuiUtil.showException(ocpp, kce);
@@ -226,7 +259,20 @@ public class Main {
       }
    }
 
-   private void login() {
+   private void askForInsecureConnection() {
+      if (MessageDialog.showMessageDialog(ocpp.gui, "Allow insecure connection?",
+            "Certificate for the API connection is invalid. Allow insecure connection?",
+            MessageDialogButton.Yes, MessageDialogButton.No) == MessageDialogButton.Yes) {
+         ocpp.oc.getConfiguration().setTrustCerts(true);
+         retryLogin(new CompletableFuture<>());
+      } else {
+         GuiUtil.resetTerminal();
+         System.exit(1);
+      }
+   }
+
+   private CompletableFuture<Void> login() {
+      CompletableFuture<Void> loggedInFuture = new CompletableFuture<>();
       BasicWindow window = new BasicWindow("Please log in");
       window.setHints(MODAL_CENTERED);
       Panel panel = new Panel(new GridLayout(2));
@@ -245,17 +291,32 @@ public class Main {
          ocpp.oc.getConfiguration().setUsername(username.getText());
          ocpp.oc.getConfiguration().setPassword(password.getText());
          window.close();
-         WaitingDialog waitingDialog = WaitingDialog.showDialog(ocpp.gui, "Please wait", "Logging in...");
-         ocpp.executor.submit(() -> {
-            DefaultOpenShiftClient newClient = new DefaultOpenShiftClient(ocpp.oc.getConfiguration());
-            ocpp.oc = newClient;
-            waitingDialog.close();
-            fetchAndUpdate();
-            persistToken(newClient);
-         });
+         retryLogin(loggedInFuture);
       }), GridLayout.createHorizontallyFilledLayoutData(2));
+      window.addWindowListener(new WindowListenerAdapter() {
+         @Override
+         public void onInput(Window basePane, KeyStroke keyStroke, AtomicBoolean deliverEvent) {
+            if (keyStroke.getKeyType() == KeyType.Escape) {
+               GuiUtil.resetTerminal();
+               System.exit(0);
+            }
+         }
+      });
       ocpp.gui.addWindow(window);
       username.takeFocus();
+      return loggedInFuture;
+   }
+
+   private void retryLogin(CompletableFuture<Void> loggedInFuture) {
+      WaitingDialog waitingDialog = WaitingDialog.showDialog(ocpp.gui, "Please wait", "Logging in...");
+      ocpp.executor.submit(() -> {
+         DefaultOpenShiftClient newClient = new DefaultOpenShiftClient(ocpp.oc.getConfiguration());
+         ocpp.oc = newClient;
+         waitingDialog.close();
+         loggedInFuture.complete(null);
+         fetchAndUpdate();
+         persistToken(newClient);
+      });
    }
 
    private void persistToken(DefaultOpenShiftClient newClient) {
@@ -275,8 +336,29 @@ public class Main {
             return;
          }
          updateKubeconfig(config -> {
-            String[] context = config.getCurrentContext().split("/");
-            String configUsername = context[2] + "/" + context[1];
+            String context = config.getCurrentContext();
+            if (context == null) {
+               String masterUrl = newClient.getConfiguration().getMasterUrl();
+               String clusterName = config.getClusters().stream()
+                     .filter(c -> masterUrl.equals(c.getCluster().getServer()))
+                     .map(NamedCluster::getName).findFirst().orElse(null);
+               if (clusterName == null) {
+                  int hostStart = masterUrl.indexOf("://") + 3;
+                  int pathStart = masterUrl.indexOf('/', hostStart);
+                  if (pathStart < 0) pathStart = masterUrl.length();
+                  clusterName = masterUrl.substring(hostStart, pathStart).replaceAll("\\.", "-");
+                  config.getClusters().add(new NamedClusterBuilder()
+                        .withName(clusterName)
+                        .withNewCluster()
+                           .withInsecureSkipTlsVerify(newClient.getConfiguration().isTrustCerts())
+                           .withServer(newClient.getConfiguration().getMasterUrl())
+                        .endCluster().build());
+               }
+               context = "default/" + clusterName + "/" + newClient.getConfiguration().getUsername();
+               config.setCurrentContext(context);
+            }
+            String[] contextParts = context.split("/");
+            String configUsername = (contextParts.length < 3 ? "" : contextParts[2]) + "/" + (contextParts.length < 2 ? "" : contextParts[1]);
             Optional<NamedAuthInfo> nai = config.getUsers().stream().filter(u -> configUsername.equals(u.getName())).findFirst();
             if (nai.isPresent()) {
                nai.get().getUser().setToken(token);
@@ -322,18 +404,25 @@ public class Main {
             });
          }
       } catch (KubernetesClientException kce) {
-         if (kce.getCode() == 401) {
-            login();
-            switchNamespace(waitingDialog);
+         waitingDialog.close();
+         if (kce.getCause() instanceof SSLException) {
+            askForInsecureConnection();
+         } else if (requiresLogin(kce)) {
+            login().thenRun(this::invokeSwitchNamespace);
          } else {
             fail(kce);
          }
+         return;
       }
       waitingDialog.close();
       ActionListDialog dialog = builder.setExtraWindowHints(new HashSet<>(Arrays.asList(Window.Hint.FIT_TERMINAL_WINDOW, Window.Hint.MODAL))).build();
       dialog.setCloseWindowWithEscape(true);
       dialog.addWindowListener(new SearchActionsByKey(dialog));
       dialog.showDialog(ocpp.gui);
+   }
+
+   private boolean requiresLogin(KubernetesClientException kce) {
+      return kce.getCode() == 401 || kce.getCode() == 0;
    }
 
    private void fail(Throwable throwable) {
