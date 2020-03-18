@@ -13,13 +13,10 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Function;
 
-import com.googlecode.lanterna.gui2.ActionListBox;
 import com.googlecode.lanterna.gui2.BasicWindow;
 import com.googlecode.lanterna.gui2.BorderLayout;
 import com.googlecode.lanterna.gui2.Button;
-import com.googlecode.lanterna.gui2.Component;
 import com.googlecode.lanterna.gui2.Direction;
 import com.googlecode.lanterna.gui2.GridLayout;
 import com.googlecode.lanterna.gui2.Label;
@@ -34,7 +31,6 @@ import com.googlecode.lanterna.gui2.dialogs.ActionListDialogBuilder;
 import com.googlecode.lanterna.gui2.dialogs.WaitingDialog;
 import com.googlecode.lanterna.gui2.table.Table;
 import com.googlecode.lanterna.input.KeyStroke;
-import com.googlecode.lanterna.input.KeyType;
 import com.googlecode.lanterna.screen.TerminalScreen;
 import com.googlecode.lanterna.terminal.DefaultTerminalFactory;
 
@@ -162,40 +158,19 @@ public class Main {
       if (row == null) {
          return;
       }
-      BasicWindow dialogWindow = new BasicWindow("Select operation");
-      dialogWindow.setHints(MODAL_CENTERED);
-      dialogWindow.setCloseWindowWithEscape(true);
-      Panel panel = new Panel(new LinearLayout(Direction.HORIZONTAL));
-      dialogWindow.setComponent(panel);
-      Function<Runnable, Runnable> closeAnd = r -> () -> {
-         dialogWindow.close();
-         GuiUtil.refreshScreen(ocpp);
-         r.run();
-      };
+      ActionListDialogBuilder actions = new ActionListDialogBuilder().setTitle("Select operation");
+
       Map<String, Resources.Operation> operations = ocpp.resources().getOperations(row);
       if (operations.isEmpty()) {
          return;
       }
       for (Map.Entry<String, Resources.Operation> entry : operations.entrySet()) {
-         panel.addComponent(new Button(entry.getKey(), closeAnd.apply(() -> entry.getValue().command(ocpp, row))));
+         actions.addAction(entry.getKey(), () -> entry.getValue().command(ocpp, row));
       }
-      dialogWindow.addWindowListener(new WindowListenerAdapter() {
-         @Override
-         public void onInput(Window basePane, KeyStroke keyStroke, AtomicBoolean deliverEvent) {
-            if (keyStroke.getKeyType() == KeyType.Character) {
-               for (Component c : panel.getChildren()) {
-                  Button b = (Button) c;
-                  if (b.getLabel().startsWith(keyStroke.getCharacter().toString())) {
-                     deliverEvent.set(true);
-                     b.handleKeyStroke(new KeyStroke(KeyType.Enter));
-                     break;
-                  }
-               }
-            }
-         }
-      });
-      ocpp.gui.addWindow(dialogWindow);
-      panel.getChildren().stream().map(Button.class::cast).findFirst().ifPresent(Button::takeFocus);
+      ActionListDialog dialog = actions.build();
+      dialog.setCloseWindowWithEscape(true);
+      dialog.addWindowListener(new SearchActionsByKey(dialog));
+      ocpp.gui.addWindow(dialog);
    }
 
    private List<String> getCurrentRow() {
@@ -326,7 +301,7 @@ public class Main {
    }
 
    private void switchNamespace(WaitingDialog waitingDialog) {
-      ActionListDialogBuilder builder = new ActionListDialogBuilder().setTitle("Select namespace...").setCanCancel(true);
+      ActionListDialogBuilder builder = new ActionListDialogBuilder().setTitle("Select namespace...");
       try {
          for (Namespace ns : ocpp.oc.namespaces().list().getItems()) {
             String name = ns.getMetadata().getName();
@@ -346,48 +321,7 @@ public class Main {
       waitingDialog.close();
       ActionListDialog dialog = builder.setExtraWindowHints(new HashSet<>(Arrays.asList(Window.Hint.FIT_TERMINAL_WINDOW, Window.Hint.MODAL))).build();
       dialog.setCloseWindowWithEscape(true);
-      ActionListBox listBox = ((Panel) dialog.getComponent()).getChildren().stream()
-            .filter(ActionListBox.class::isInstance).map(ActionListBox.class::cast)
-            .findFirst().orElse(null);
-      dialog.addWindowListener(new WindowListenerAdapter() {
-         String searchString = "";
-
-         @Override
-         public void onInput(Window basePane, KeyStroke keyStroke, AtomicBoolean hasBeenHandled) {
-            if (keyStroke.getKeyType() == KeyType.Character) {
-               searchString += keyStroke.getCharacter();
-               List<Runnable> items = listBox.getItems();
-               int longestMatch = 0;
-               int matchLength = 0;
-               for (int i = 0; i < items.size(); i++) {
-                  Runnable item = items.get(i);
-                  String label = item.toString();
-                  for (int j = 0; ; ++j) {
-                     if (j >= searchString.length() || j >= label.length()) {
-                        if (j > matchLength) {
-                           longestMatch = i;
-                           matchLength = j;
-                        }
-                        break;
-                     }
-                     if (label.charAt(j) != searchString.charAt(j)) {
-                        if (j - 1 > matchLength) {
-                           longestMatch = i;
-                           matchLength = j - 1;
-                        }
-                        break;
-                     }
-                  }
-               }
-               if (matchLength > 0) {
-                  listBox.setSelectedIndex(longestMatch);
-               }
-               hasBeenHandled.set(true);
-            } else {
-               searchString = "";
-            }
-         }
-      });
+      dialog.addWindowListener(new SearchActionsByKey(dialog));
       dialog.showDialog(ocpp.gui);
    }
 
