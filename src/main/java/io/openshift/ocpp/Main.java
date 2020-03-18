@@ -339,19 +339,21 @@ public class Main {
             String context = config.getCurrentContext();
             if (context == null) {
                String masterUrl = newClient.getConfiguration().getMasterUrl();
+               int hostStart = masterUrl.indexOf("://") + 3;
+               if (masterUrl.indexOf('/', hostStart) >= 0) {
+                  masterUrl = masterUrl.substring(0, masterUrl.indexOf('/', hostStart));
+               }
+               String finalMasterUrl = masterUrl;
                String clusterName = config.getClusters().stream()
-                     .filter(c -> masterUrl.equals(c.getCluster().getServer()))
+                     .filter(c -> finalMasterUrl.equals(c.getCluster().getServer()))
                      .map(NamedCluster::getName).findFirst().orElse(null);
                if (clusterName == null) {
-                  int hostStart = masterUrl.indexOf("://") + 3;
-                  int pathStart = masterUrl.indexOf('/', hostStart);
-                  if (pathStart < 0) pathStart = masterUrl.length();
-                  clusterName = masterUrl.substring(hostStart, pathStart).replaceAll("\\.", "-");
+                  clusterName = masterUrl.substring(hostStart).replaceAll("\\.", "-");
                   config.getClusters().add(new NamedClusterBuilder()
                         .withName(clusterName)
                         .withNewCluster()
                            .withInsecureSkipTlsVerify(newClient.getConfiguration().isTrustCerts())
-                           .withServer(newClient.getConfiguration().getMasterUrl())
+                           .withServer(masterUrl)
                         .endCluster().build());
                }
                context = "default/" + clusterName + "/" + newClient.getConfiguration().getUsername();
