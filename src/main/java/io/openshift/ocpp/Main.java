@@ -13,6 +13,7 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 import com.googlecode.lanterna.gui2.BasicWindow;
 import com.googlecode.lanterna.gui2.BorderLayout;
@@ -273,9 +274,7 @@ public class Main {
          } catch (NoSuchFieldException | IllegalAccessException e) {
             return;
          }
-         try {
-            Path kubeconfig = Paths.get(System.getProperty("user.home"), ".kube", "config");
-            Config config = KubeConfigUtils.parseConfig(kubeconfig.toFile());
+         updateKubeconfig(config -> {
             String[] context = config.getCurrentContext().split("/");
             String configUsername = context[2] + "/" + context[1];
             Optional<NamedAuthInfo> nai = config.getUsers().stream().filter(u -> configUsername.equals(u.getName())).findFirst();
@@ -284,15 +283,23 @@ public class Main {
             } else {
                config.getUsers().add(new NamedAuthInfo(configUsername, new AuthInfoBuilder().withToken(token).build()));
             }
-            Path backup = kubeconfig.getParent().resolve("config.backup");
-            if (!backup.toFile().exists()) {
-               Files.copy(kubeconfig, backup);
-            }
-            Files.write(kubeconfig, SerializationUtils.getMapper().writeValueAsBytes(config));
-         } catch (IOException e) {
-            GuiUtil.showException(ocpp, e);
-         }
+         });
       });
+   }
+
+   private void updateKubeconfig(Consumer<Config> configUpdater) {
+      try {
+         Path kubeconfig = Paths.get(System.getProperty("user.home"), ".kube", "config");
+         Config config = KubeConfigUtils.parseConfig(kubeconfig.toFile());
+         configUpdater.accept(config);
+         Path backup = kubeconfig.getParent().resolve("config.backup");
+         if (!backup.toFile().exists()) {
+            Files.copy(kubeconfig, backup);
+         }
+         Files.write(kubeconfig, SerializationUtils.getMapper().writeValueAsBytes(config));
+      } catch (IOException e) {
+         GuiUtil.showException(ocpp, e);
+      }
    }
 
    private void invokeSwitchNamespace() {
@@ -308,6 +315,10 @@ public class Main {
             builder.addAction(name, () -> {
                ocpp.oc.getConfiguration().setNamespace(name);
                table.setSelectedRow(0);
+               ocpp.executor.submit(() -> updateKubeconfig(config -> {
+                  String[] ctx = config.getCurrentContext().split("/");
+                  config.setCurrentContext(name + "/" + ctx[1] + "/" + ctx[2]);
+               }));
             });
          }
       } catch (KubernetesClientException kce) {
