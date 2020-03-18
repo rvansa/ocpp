@@ -90,7 +90,7 @@ public class GuiUtil {
       resetTerminal();
       try {
          String[] fullCommand = Stream.concat(
-               Stream.of("ssh", "-o", "StrictHostKeyChecking=no", "core@" + hostname),
+               Stream.of("ssh", "-t", "-o", "StrictHostKeyChecking=no", "core@" + hostname),
                Stream.of(command)).toArray(String[]::new);
          ProcessBuilder processBuilder = new ProcessBuilder(fullCommand).inheritIO();
          Process ssh = processBuilder.start();

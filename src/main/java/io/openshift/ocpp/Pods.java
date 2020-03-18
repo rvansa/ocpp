@@ -93,7 +93,7 @@ public class Pods extends AbstractResources {
 
    private static void top(Ocpp ocpp, List<String> row) {
       Pod pod = ocpp.oc.pods().inNamespace(ocpp.ns()).withName(row.get(0)).get();
-      GuiUtil.ssh(ocpp, pod.getSpec().getNodeName(), "-t", "top");
+      GuiUtil.ssh(ocpp, pod.getSpec().getNodeName(), "top");
    }
 
    private static void rsh(Ocpp ocpp, List<String> row) {

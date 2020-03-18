@@ -59,17 +59,24 @@ public class Nodes extends AbstractResources {
 
    @Override
    public Map<String, Operation> getOperations(List<String> unused) {
-      return commonOps().add("ssh", (ocpp, row) -> {
-         String name = row.get(0);
-         Node node = ocpp.oc.nodes().withName(name).get();
-         String hostname = node.getStatus().getAddresses().stream()
-               .filter(a -> "Hostname".equals(a.getType()))
-               .map(NodeAddress::getAddress).findAny().orElse(null);
-         if (hostname == null) {
-            hostname = node.getMetadata().getName();
-         }
-         GuiUtil.ssh(ocpp, hostname);
-      }).build();
+      return commonOps()
+            .add("ssh", (ocpp, row) -> {
+               GuiUtil.ssh(ocpp, getHostname(ocpp, row), "stty", "echo", "&&", "bash", "-i");
+            }).add("top", (ocpp, row) -> {
+               GuiUtil.ssh(ocpp, getHostname(ocpp, row), "top");
+            }).build();
+   }
+
+   private String getHostname(Ocpp ocpp, List<String> row) {
+      String name = row.get(0);
+      Node node = ocpp.oc.nodes().withName(name).get();
+      String hostname = node.getStatus().getAddresses().stream()
+            .filter(a -> "Hostname".equals(a.getType()))
+            .map(NodeAddress::getAddress).findAny().orElse(null);
+      if (hostname == null) {
+         hostname = node.getMetadata().getName();
+      }
+      return hostname;
    }
 
    @Override
