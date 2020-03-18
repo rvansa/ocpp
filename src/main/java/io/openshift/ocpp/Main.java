@@ -373,7 +373,8 @@ public class Main {
 
    private void updateKubeconfig(Consumer<Config> configUpdater) {
       try {
-         Path kubeconfig = Paths.get(System.getProperty("user.home"), ".kube", "config");
+         String KUBECONFIG = System.getenv("KUBECONFIG");
+         Path kubeconfig = KUBECONFIG != null ? Paths.get(KUBECONFIG) : Paths.get(System.getProperty("user.home"), ".kube", "config");
          Config config = KubeConfigUtils.parseConfig(kubeconfig.toFile());
          configUpdater.accept(config);
          Path backup = kubeconfig.getParent().resolve("config.backup");
