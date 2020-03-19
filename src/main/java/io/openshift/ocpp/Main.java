@@ -2,6 +2,7 @@ package io.openshift.ocpp;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -249,10 +250,8 @@ public class Main {
       } catch (KubernetesClientException kce) {
          if (kce.getCause() instanceof SSLException) {
             askForInsecureConnection();
-         } else if (requiresLogin(kce)) {
-            login();
          } else {
-            GuiUtil.showException(ocpp, kce);
+            login(kce);
          }
       } catch (Exception e) {
          GuiUtil.showException(ocpp, e);
@@ -271,21 +270,32 @@ public class Main {
       }
    }
 
-   private CompletableFuture<Void> login() {
+   private CompletableFuture<Void> login(KubernetesClientException kce) {
+      // TODO: the future is not always completed - not a good pattern
       CompletableFuture<Void> loggedInFuture = new CompletableFuture<>();
+      String message;
+      if (kce.getCode() == 401) {
+         message = "Unauthorized, please log in.";
+      } else if (kce.getCause() instanceof UnknownHostException) {
+         message = "Cannot resolve master server URL, please login:";
+      } else {
+         GuiUtil.showException(ocpp, kce);
+         return loggedInFuture;
+      }
       BasicWindow window = new BasicWindow("Please log in");
       window.setHints(MODAL_CENTERED);
       Panel panel = new Panel(new GridLayout(2));
       window.setComponent(panel);
+      panel.addComponent(new Label(message), GridLayout.createHorizontallyFilledLayoutData(2));
       panel.addComponent(new Label("server"));
       TextBox masterUrl = new TextBox(ocpp.oc.getConfiguration().getMasterUrl() != null ? ocpp.oc.getConfiguration().getMasterUrl() : "");
       panel.addComponent(masterUrl);
       panel.addComponent(new Label("user"));
       TextBox username = new TextBox(ocpp.oc.getConfiguration().getUsername() != null ? ocpp.oc.getConfiguration().getUsername() : "");
-      panel.addComponent(username);
+      panel.addComponent(username, GridLayout.createLayoutData(GridLayout.Alignment.FILL, GridLayout.Alignment.BEGINNING));
       panel.addComponent(new Label("password"));
       TextBox password = new TextBox().setMask('*');
-      panel.addComponent(password);
+      panel.addComponent(password, GridLayout.createLayoutData(GridLayout.Alignment.FILL, GridLayout.Alignment.BEGINNING));
       panel.addComponent(new Button("Login", () -> {
          ocpp.oc.getConfiguration().setMasterUrl(masterUrl.getText());
          ocpp.oc.getConfiguration().setUsername(username.getText());
@@ -374,15 +384,22 @@ public class Main {
    private void updateKubeconfig(Consumer<Config> configUpdater) {
       try {
          String KUBECONFIG = System.getenv("KUBECONFIG");
-         Path kubeconfig = KUBECONFIG != null ? Paths.get(KUBECONFIG) : Paths.get(System.getProperty("user.home"), ".kube", "config");
-         Config config = KubeConfigUtils.parseConfig(kubeconfig.toFile());
-         configUpdater.accept(config);
-         Path backup = kubeconfig.getParent().resolve("config.backup");
-         if (!backup.toFile().exists()) {
-            Files.copy(kubeconfig, backup);
+         Path kubeconfig = KUBECONFIG != null ? Paths.get(KUBECONFIG) : Paths.get(System.getenv("HOME"), ".kube", "config");
+         Config config;
+         if (kubeconfig.toFile().exists()) {
+            config = KubeConfigUtils.parseConfig(kubeconfig.toFile());
+            configUpdater.accept(config);
+            Path backup = kubeconfig.getParent().resolve("config.backup");
+            if (!backup.toFile().exists()) {
+               Files.copy(kubeconfig, backup);
+            }
+         } else {
+            config = new Config();
+            configUpdater.accept(config);
          }
+         kubeconfig.getParent().toFile().mkdirs();
          Files.write(kubeconfig, SerializationUtils.getMapper().writeValueAsBytes(config));
-      } catch (IOException e) {
+      } catch (Exception e) {
          GuiUtil.showException(ocpp, e);
       }
    }
@@ -410,10 +427,8 @@ public class Main {
          waitingDialog.close();
          if (kce.getCause() instanceof SSLException) {
             askForInsecureConnection();
-         } else if (requiresLogin(kce)) {
-            login().thenRun(this::invokeSwitchNamespace);
          } else {
-            fail(kce);
+            login(kce).thenRun(this::invokeSwitchNamespace);
          }
          return;
       }
@@ -422,20 +437,5 @@ public class Main {
       dialog.setCloseWindowWithEscape(true);
       dialog.addWindowListener(new SearchActionsByKey(dialog));
       dialog.showDialog(ocpp.gui);
-   }
-
-   private boolean requiresLogin(KubernetesClientException kce) {
-      return kce.getCode() == 401 || kce.getCode() == 0;
-   }
-
-   private void fail(Throwable throwable) {
-      try {
-         screen.stopScreen();
-      } catch (IOException e) {
-         e.printStackTrace();
-      }
-      GuiUtil.resetTerminal();
-      throwable.printStackTrace();
-      System.exit(1);
    }
 }
