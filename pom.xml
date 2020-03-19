@@ -13,6 +13,7 @@
     <properties>
         <maven.compiler.target>1.8</maven.compiler.target>
         <maven.compiler.source>1.8</maven.compiler.source>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
     <dependencies>
@@ -64,6 +65,64 @@
                 </executions>
             </plugin>
         </plugins>
+
     </build>
+
+    <profiles>
+        <profile>
+            <id>build-image</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>io.fabric8</groupId>
+                        <artifactId>docker-maven-plugin</artifactId>
+                        <version>0.33.0</version>
+                        <executions>
+                            <execution>
+                                <id>build-image</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>build</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <images>
+                                <image>
+                                    <name>quay.io/rvansa/ocpp:${project.version}</name>
+                                    <build>
+                                        <from>registry.redhat.io/openjdk/openjdk-11-rhel8</from>
+                                        <tags>
+                                            <tag>latest</tag>
+                                        </tags>
+                                        <runCmds>
+                                            <cmd>curl https://mirror.openshift.com/pub/openshift-v4/clients/ocp/latest/openshift-client-linux-4.3.5.tar.gz -o - | tar xz oc</cmd>
+                                        </runCmds>
+                                        <assembly>
+                                            <targetDir>/deployment</targetDir>
+                                            <inline>
+                                                <files>
+                                                    <file>
+                                                        <outputDirectory>.</outputDirectory>
+                                                        <source>target/${project.artifactId}-${project.version}.jar</source>
+                                                    </file>
+                                                </files>
+                                            </inline>
+                                        </assembly>
+                                        <cmd>
+                                            <shell>java -Docpp.oc=/home/jboss/oc -jar /deployment/ocpp-${project.version}.jar</shell>
+                                        </cmd>
+                                    </build>
+                                </image>
+                            </images>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
 </project>
